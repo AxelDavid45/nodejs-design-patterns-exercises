@@ -15,6 +15,7 @@ class FindRegex extends EventEmitter {
   }
 
   find() {
+    setImmediate(() => this.emit("start", this.files));
     for (const file of this.files) {
       readFile(file, "utf-8", (err, content) => {
         if (err) {
@@ -33,7 +34,6 @@ class FindRegex extends EventEmitter {
   }
 }
 
-
 const findFileRegex = new FindRegex(/hello \w+/g);
 
 findFileRegex
@@ -42,5 +42,7 @@ findFileRegex
   .find()
   .on("fileread", (file) => console.log(`${file} was read`))
   .on("found", (file, match) => console.log(`Matched "${match}" in ${file}`))
-  .on("error", (err) => console.error(`Error emitted ${err.message}`));
-  
+  .on("error", (err) => console.error(`Error emitted ${err.message}`))
+  .on("start", (files) => {
+    files.forEach((file) => console.log(`Searching in ${file}`));
+  });
