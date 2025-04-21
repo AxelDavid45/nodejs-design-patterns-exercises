@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import superagent from "superagent";
 import mkdirp from "mkdirp";
-import { urlToFilename } from "./utils.js";
+import { getPageLinks, urlToFilename } from "./utils.js";
 
-function saveFile(filename, contents, cb) {
+export function saveFile(filename, contents, cb) {
   mkdirp(path.dirname(filename), (err) => {
     if (err) {
       return cb(err);
@@ -33,20 +33,50 @@ function download(url, filename, cb) {
   });
 }
 
-export function spider(url, cb) {
-  const filename = urlToFilename(url);
+function spiderLinks(currentUrl, body, nesting, cb) {
+  if (nesting === 0) {
+    return process.nextTick(cb);
+  }
 
-  fs.access(filename, (err) => {
-    // ERROR No Entity/Entry
-    if (!err || err.code !== "ENOENT") {
-      return cb(null, filename, false);
+  const links = getPageLinks(currentUrl, body);
+
+  if (!links.length) {
+    return process.nextTick(cb);
+  }
+
+  function iterate(index) {
+    if (index === links.length) {
+      return cb(null, currentUrl, true); 
     }
 
-    download(url, filename, (err) => {
+    spider(links[index], nesting - 1, function (err) {
       if (err) {
         return cb(err);
       }
-      cb(null, filename, true);
+      iterate(index + 1);
     });
+  }
+
+  iterate(0);
+}
+
+export function spider(url, nesting, cb) {
+  const filename = urlToFilename(url);
+
+  fs.readFile(filename, "utf8", (err, fileContent) => {
+    if (err) {
+      if (err.code !== "ENOENT") return cb(err);
+
+      // the file doesn't exist, download it
+      return download(url, filename, (err, requestContent) => {
+        if (err) {
+          return cb(err);
+        }
+
+        spiderLinks(url, requestContent, nesting, cb);
+      });
+    }
+
+    spiderLinks(url, fileContent, nesting, cb);
   });
 }

@@ -1,7 +1,12 @@
 import { spider } from "./spider.js";
-spider(process.argv[2], (err, filename, downloaded) => {
+
+const url = process.argv[2];
+const nesting = Number(process.argv[3], 10) || 1;
+
+spider(url, nesting, (err, filename, downloaded) => {
   if (err) {
     console.error(err);
+    process.exit(1);
   } else if (downloaded) {
     console.log(`Completed the download of "${filename}"`);
   } else {
