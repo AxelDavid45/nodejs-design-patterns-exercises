@@ -44,20 +44,38 @@ function spiderLinks(currentUrl, body, nesting, cb) {
     return process.nextTick(cb);
   }
 
-  function iterate(index) {
-    if (index === links.length) {
-      return cb(null, currentUrl, true); 
+  // New implementation using parallel (concurrent)
+  let completed = 0;
+  let hasErrors = false;
+
+  function done(err) {
+    if (err) {
+      hasErrors = true;
+      return cb(err);
     }
 
-    spider(links[index], nesting - 1, function (err) {
-      if (err) {
-        return cb(err);
-      }
-      iterate(index + 1);
-    });
+    if (++completed === links.length && !hasErrors) {
+      return cb();
+    }
   }
 
-  iterate(0);
+  links.forEach((link) => spider(link, nesting - 1, done));
+
+  // This was implementes sequential execution.
+  // function iterate(index) {
+  //   if (index === links.length) {
+  //     return cb(null, currentUrl, true);
+  //   }
+
+  //   spider(links[index], nesting - 1, function (err) {
+  //     if (err) {
+  //       return cb(err);
+  //     }
+  //     iterate(index + 1);
+  //   });
+  // }
+
+  // iterate(0);
 }
 
 export function spider(url, nesting, cb) {
