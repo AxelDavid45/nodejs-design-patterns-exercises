@@ -1,15 +1,12 @@
 import { spider } from "./spider.js";
-
+import { TaskQueue } from "./taskQueue.js";
 const url = process.argv[2];
 const nesting = Number(process.argv[3], 10) || 1;
+const concurrency = Number.parseInt(process.argv[4], 10) || 1;
 
-spider(url, nesting, (err, filename, downloaded) => {
-  if (err) {
-    console.error(err);
-    process.exit(1);
-  } else if (downloaded) {
-    console.log(`Completed the download of "${filename}"`);
-  } else {
-    console.log(`"${filename} was already downloaded`);
-  }
-});
+const spiderQueue = new TaskQueue(concurrency);
+
+spiderQueue.on("error", console.error);
+spiderQueue.on("empty", () => console.log("Download Complete"));
+
+spider(url, nesting, spiderQueue);
