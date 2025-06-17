@@ -7,6 +7,16 @@ Bonus: avoid callback hell
 */
 import { opendir, Dir } from "fs";
 
+function startReadingDirectory(dir, cb) {
+  opendir(dir, { encoding: "utf-8" }, (err, dirent) => {
+    if (err) {
+      return cb(err);
+    }
+
+    readNextDir(dirent, cb);
+  });
+}
+
 /**
  *
  * @param {Dir} parent
@@ -30,14 +40,21 @@ function readNextDir(parent, cb) {
     }
 
     if (next.isFile()) {
-      console.log(`${next.name}`);
+      console.log(`file: ${next.name}`);
       return readNextDir(parent, cb);
     }
 
     if (next.isDirectory()) {
-      console.log(`${next.name}`);
-      // Here we need to iterate over recursive
+      if (next.name !== "node_modules") {
+        console.log(`${next.parentPath}/${next.name}`);
+        return startReadingDirectory(`${next.parentPath}/${next.name}`, () => {
+          return readNextDir(parent, cb);
+        });
+      }
       return readNextDir(parent, cb);
+      // return readNextDir(parent, cb);
+
+      // Here we need to iterate over recursive
     }
   });
 }
@@ -47,14 +64,7 @@ function listNestedFiles(dir, cb, maxNested) {
     return process.nextTick(() => cb(new Error("Expected dir to be a string")));
   }
 
-  opendir(dir, (err, dirent) => {
-    if (err) {
-      return cb(err);
-    }
-
-    console.log(dirent.path);
-    readNextDir(dirent, cb);
-  });
+  startReadingDirectory(dir, cb);
 }
 
 listNestedFiles(process.argv[2], (err) => {
@@ -62,6 +72,4 @@ listNestedFiles(process.argv[2], (err) => {
     console.error(err);
     process.exit(1);
   }
-
-  console.log("Read Succesfully");
 });
