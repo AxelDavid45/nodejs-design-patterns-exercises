@@ -7,6 +7,9 @@ Bonus: avoid callback hell
 */
 import { opendir, Dir } from "fs";
 
+const GLOBAL_EXCLUSIONS = ["node_modules"];
+const filesFound = [];
+
 function startReadingDirectory(dir, cb) {
   opendir(dir, { encoding: "utf-8" }, (err, dirent) => {
     if (err) {
@@ -26,7 +29,8 @@ function startReadingDirectory(dir, cb) {
 function readNextDir(parent, cb) {
   parent.read((err, next) => {
     if (err) {
-      return cb(err);
+      // On error, close handle then propagate
+      return parent.close(() => cb(err));
     }
 
     if (!next) {
@@ -35,26 +39,26 @@ function readNextDir(parent, cb) {
           return cb(err);
         }
 
-        return cb();
+        return cb(null, filesFound);
       });
     }
 
     if (next.isFile()) {
-      console.log(`file: ${next.name}`);
+      filesFound.push(next.name);
       return readNextDir(parent, cb);
     }
 
     if (next.isDirectory()) {
-      if (next.name !== "node_modules") {
-        console.log(`${next.parentPath}/${next.name}`);
-        return startReadingDirectory(`${next.parentPath}/${next.name}`, () => {
-          return readNextDir(parent, cb);
-        });
+      if (!GLOBAL_EXCLUSIONS.includes(next.name)) {
+        return startReadingDirectory(
+          `${next.parentPath}/${next.name}`,
+          (err) => {
+            if (err) return cb(err);
+            return readNextDir(parent, cb);
+          }
+        );
       }
       return readNextDir(parent, cb);
-      // return readNextDir(parent, cb);
-
-      // Here we need to iterate over recursive
     }
   });
 }
@@ -67,9 +71,11 @@ function listNestedFiles(dir, cb, maxNested) {
   startReadingDirectory(dir, cb);
 }
 
-listNestedFiles(process.argv[2], (err) => {
+listNestedFiles(process.argv[2], (err, files) => {
   if (err) {
     console.error(err);
     process.exit(1);
   }
+
+  console.log("Files Array", filesFound);
 });
