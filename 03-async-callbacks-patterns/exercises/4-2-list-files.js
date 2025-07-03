@@ -5,70 +5,123 @@ filesystem and that asynchronously iterates over all the subdirectories
 to eventually return a list of all the files discovered.
 Bonus: avoid callback hell
 */
-import { opendir, Dir } from "fs";
+import { readdir } from "fs";
+import { basename } from "path";
 
-const GLOBAL_EXCLUSIONS = ["node_modules"];
-const filesFound = [];
+const GLOBAL_EXCLUSIONS = ["node_modules", ".DS_Store", ".git"];
 
-function startReadingDirectory(dir, cb) {
-  opendir(dir, { encoding: "utf-8" }, (err, dirent) => {
+function readSubdirectory(dir, cb) {
+  return readdir(dir, (err, files) => {
     if (err) {
+      if (err.code === "ENOTDIR") {
+        const getFileName = basename(dir);
+        return cb(null, true, [getFileName]);
+      }
       return cb(err);
     }
 
-    readNextDir(dirent, cb);
+    const filesFiltered = files.filter((f) => !GLOBAL_EXCLUSIONS.includes(f));
+
+    return cb(null, false, filesFiltered);
   });
 }
 
-/**
- *
- * @param {Dir} parent
- * @param {*} cb
- * @returns
- */
-function readNextDir(parent, cb) {
-  parent.read((err, next) => {
-    if (err) {
-      // On error, close handle then propagate
-      return parent.close(() => cb(err));
+function list(dir, cb) {
+  console.log(`Reading ${dir}`);
+  const tmpFiles = [];
+  let parentReading = [];
+  let parentPosition = 0;
+
+  function readnext(parent, currFiles, position) {
+    console.table({ position: position, currFiles: currFiles.length });
+
+    if (position > currFiles.length - 1) {
+      if (parentPosition > parentReading.length - 1) {
+        console.log(`read all files ${dir}`);
+        return cb(null, tmpFiles);
+      } else {
+        console.table({ parentPosition, parentReading });
+        parentPosition = parentPosition + 1;
+        return readnext(dir, parentReading, parentPosition);
+      }
     }
 
-    if (!next) {
-      return parent.close((err) => {
+    console.log(`Reading ${currFiles[position]}`);
+
+    if (!GLOBAL_EXCLUSIONS.includes(currFiles[position])) {
+      let currPath = `${parent}/${currFiles[position]}`;
+      readSubdirectory(currPath, (err, isFile, sbFiles) => {
         if (err) {
           return cb(err);
         }
 
-        return cb(null, filesFound);
+        if (isFile) {
+          console.log(`file ${sbFiles[0]}`);
+          tmpFiles.push(sbFiles[0]);
+          return readnext(parent, currFiles, position + 1, cb);
+        }
+
+        console.log(`directory ${currPath} length ${sbFiles.length}`);
+
+        if (sbFiles.length) {
+          return readnext(currPath, sbFiles, 0, cb);
+        }
+
+        return readnext(parent, currFiles, position + 1, cb);
       });
+    } else {
+      console.log(`Skipping ${currFiles[position]}`);
+
+      return readnext(parent, currFiles, position + 1, cb);
+    }
+  }
+
+  readSubdirectory(dir, (err, isFile, files) => {
+    if (err) {
+      return cb(err);
     }
 
-    if (next.isFile()) {
-      filesFound.push(next.name);
-      return readNextDir(parent, cb);
+    if (isFile) {
+      tmpFiles.push(files[0]);
+      return cb(null, tmpFiles);
     }
 
-    if (next.isDirectory()) {
-      if (!GLOBAL_EXCLUSIONS.includes(next.name)) {
-        return startReadingDirectory(
-          `${next.parentPath}/${next.name}`,
-          (err) => {
-            if (err) return cb(err);
-            return readNextDir(parent, cb);
-          }
-        );
-      }
-      return readNextDir(parent, cb);
+    console.log(files);
+    if (files.length) {
+      parentReading = files;
+
+      console.log("parentReading start", parentReading);
+
+      return readnext(dir, parentReading, 0, cb);
     }
   });
+
+  // readdir(dir, (errMainDirectory, files) => {
+  //   if (errMainDirectory) {
+  //     if (errMainDirectory.code === "ENOTDIR") {
+  //       console.warn(`Is not DIR: ${dir}`);
+  //       const getFileName = basename(dir);
+
+  //       tmpFiles.push(getFileName);
+
+  //       return readnext(parentDirectory);
+  //     }
+  //     return cb(errMainDirectory);
+  //   }
+
+  //   parentDirectory.concat(files);
+
+  //   console.log(`is DIR ${dir}`);
+
+  //   return readnext(files, cb);
+  // });
 }
 
-function listNestedFiles(dir, cb, maxNested) {
+function listNestedFiles(dir, cb) {
   if (typeof dir !== "string") {
     return process.nextTick(() => cb(new Error("Expected dir to be a string")));
   }
-
-  startReadingDirectory(dir, cb);
+  list(dir, cb);
 }
 
 listNestedFiles(process.argv[2], (err, files) => {
@@ -77,5 +130,5 @@ listNestedFiles(process.argv[2], (err, files) => {
     process.exit(1);
   }
 
-  console.log("Files Array", filesFound);
+  console.log("Files Array", files);
 });
